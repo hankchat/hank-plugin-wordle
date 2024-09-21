@@ -1,6 +1,5 @@
-use extism_pdk::{http, info, plugin_fn, FnResult, HttpRequest, Prost};
+use extism_pdk::{info, plugin_fn, FnResult, Prost};
 use hank_pdk::Hank;
-use hank_types::cron::CronJob;
 use hank_types::database::PreparedStatement;
 use hank_types::message::{Message, Reaction};
 use hank_types::plugin::Metadata;
@@ -42,11 +41,6 @@ CREATE TABLE IF NOT EXISTS puzzle (
 
 #[plugin_fn]
 pub fn initialize() -> FnResult<()> {
-    Hank::cron(CronJob {
-        cron: "1/7 * * * * *".into(),
-        job: "run_every_7_seconds".into(),
-    });
-
     Ok(())
 }
 
@@ -65,10 +59,6 @@ pub fn handle_command(Prost(message): Prost<Message>) -> FnResult<()> {
             .collect();
 
         info!("{:?}", puzzles);
-
-        let req = HttpRequest::new("http://icanhazip.com");
-        let res = http::request::<String>(&req, None).unwrap();
-        info!("{}", String::from_utf8(res.body()).unwrap());
     }
 
     Ok(())
@@ -85,12 +75,6 @@ pub fn handle_message(Prost(message): Prost<Message>) -> FnResult<()> {
         });
     };
 
-    Ok(())
-}
-
-#[plugin_fn]
-pub fn run_every_7_seconds() -> FnResult<()> {
-    info!("I run async every 7 seconds.");
     Ok(())
 }
 
