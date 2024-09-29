@@ -3,6 +3,9 @@ name = "hank-plugin-wordle"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.release]
+pre-release-commit-message = "Release {{crate_name}} version {{version}}"
+
 [lib]
 crate-type = ["cdylib"]
 
