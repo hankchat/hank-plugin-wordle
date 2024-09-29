@@ -1,24 +1,29 @@
-use extism_pdk::{info, plugin_fn, FnResult, Prost};
-use hank_pdk::Hank;
+use extism_pdk::{info, plugin_fn, FnResult};
+use hank_pdk::{Hank, PluginMetadata};
 use hank_types::database::PreparedStatement;
 use hank_types::message::{Message, Reaction};
-use hank_types::plugin::Metadata;
 use wordle::Puzzle;
 
 mod wordle;
 
 #[plugin_fn]
-pub fn get_metadata() -> FnResult<Prost<Metadata>> {
-    Ok(Prost(Metadata {
-        name: "wordle".into(),
-        description: "A wordle plugin to record daily Wordle puzzles.".into(),
-        version: "0.1.0".into(),
-        database: true,
-    }))
+pub fn plugin() -> FnResult<()> {
+    let mut hank = Hank::new(PluginMetadata {
+        name: "wordle",
+        description: "A wordle plugin to record daily Wordle puzzles.",
+        version: "0.1.0",
+        ..Default::default()
+    });
+
+    hank.register_install_handler(install);
+    hank.register_initialize_handler(initialize);
+    hank.register_message_handler(handle_message);
+    hank.register_command_handler(handle_command);
+
+    hank.start()
 }
 
-#[plugin_fn]
-pub fn install() -> FnResult<()> {
+pub fn install() {
     let query = "
 CREATE TABLE IF NOT EXISTS puzzle (
     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -35,17 +40,13 @@ CREATE TABLE IF NOT EXISTS puzzle (
         sql: query.into(),
         ..Default::default()
     });
-
-    Ok(())
 }
 
-#[plugin_fn]
-pub fn initialize() -> FnResult<()> {
-    Ok(())
+pub fn initialize() {
+    info!("Initializing Wordle...");
 }
 
-#[plugin_fn]
-pub fn handle_command(Prost(message): Prost<Message>) -> FnResult<()> {
+pub fn handle_command(message: Message) {
     if message.content == "wordle" {
         let statement = PreparedStatement {
             sql: "SELECT * FROM puzzle ORDER BY submitted_at DESC LIMIT ?".into(),
@@ -60,12 +61,9 @@ pub fn handle_command(Prost(message): Prost<Message>) -> FnResult<()> {
 
         info!("{:?}", puzzles);
     }
-
-    Ok(())
 }
 
-#[plugin_fn]
-pub fn handle_message(Prost(message): Prost<Message>) -> FnResult<()> {
+pub fn handle_message(message: Message) {
     // Record puzzles.
     if let Ok(puzzle) = Puzzle::try_from(message.content.clone()) {
         insert_puzzle(&message.author_id, puzzle);
@@ -74,8 +72,6 @@ pub fn handle_message(Prost(message): Prost<Message>) -> FnResult<()> {
             emoji: "✅".into(),
         });
     };
-
-    Ok(())
 }
 
 fn insert_puzzle(user_id: &str, puzzle: Puzzle) {
