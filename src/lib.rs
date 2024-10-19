@@ -1,24 +1,28 @@
-use extism_pdk::{info, plugin_fn, FnResult};
-use hank_pdk::{Hank, PluginMetadata};
+use hank_pdk::{info, plugin_fn, FnResult, Hank};
 use hank_types::database::PreparedStatement;
 use hank_types::message::{Message, Reaction};
+use hank_types::plugin::{CommandContext, Metadata};
 use wordle::Puzzle;
 
 mod wordle;
 
 #[plugin_fn]
 pub fn plugin() -> FnResult<()> {
-    let mut hank = Hank::new(PluginMetadata {
-        name: "wordle",
-        description: "A wordle plugin to record daily Wordle puzzles.",
-        version: "0.1.0",
-        ..Default::default()
-    });
+    let mut hank = Hank::new(
+        Metadata::new(
+            "wordle",
+            "jackyyll",
+            "A wordle plugin to record daily Wordle puzzles",
+            "0.1.0",
+        )
+        .handles_commands(true)
+        .build(),
+    );
 
     hank.register_install_handler(install);
     hank.register_initialize_handler(initialize);
-    hank.register_message_handler(handle_message);
-    hank.register_command_handler(handle_command);
+    hank.register_chat_message_handler(handle_message);
+    hank.register_chat_command_handler(wordle_chat_commands);
 
     hank.start()
 }
@@ -46,27 +50,23 @@ pub fn initialize() {
     info!("Initializing Wordle...");
 }
 
-pub fn handle_command(message: Message) {
-    if message.content == "wordle" {
-        let statement = PreparedStatement {
-            sql: "SELECT * FROM puzzle ORDER BY submitted_at DESC LIMIT ?".into(),
-            values: vec!["5".into()],
-        };
-        let results = Hank::db_query(statement);
-        let puzzles: Vec<Puzzle> = results
-            .rows
-            .into_iter()
-            .map(|s| serde_json::from_str(&s).unwrap())
-            .collect();
+pub fn wordle_chat_commands(_context: CommandContext, _message: Message) {
+    let statement = PreparedStatement {
+        sql: "SELECT * FROM puzzle ORDER BY submitted_at DESC LIMIT ?".into(),
+        values: vec!["5".into()],
+    };
+    let puzzles = Hank::db_fetch::<Puzzle>(statement);
 
-        info!("{:?}", puzzles);
-    }
+    info!("{:?}", puzzles);
 }
 
 pub fn handle_message(message: Message) {
     // Record puzzles.
     if let Ok(puzzle) = Puzzle::try_from(message.content.clone()) {
-        insert_puzzle(&message.author_id, puzzle);
+        insert_puzzle(
+            &message.author.clone().expect("message author expected").id,
+            puzzle,
+        );
         Hank::react(Reaction {
             message: Some(message),
             emoji: "✅".into(),

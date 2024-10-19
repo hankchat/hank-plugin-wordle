@@ -12,8 +12,8 @@ crate-type = ["cdylib"]
 [dependencies]
 chrono = "0.4.38"
 extism-pdk = "1.2.1"
-hank-pdk = "0.1.0"
-hank-types = "0.1.2"
+hank-pdk = "0.1.40"
+hank-types = { version = "0.1.50", features = ["builder"] }
 regex = "1.10.6"
 serde = "1.0.210"
 serde_json = "1.0.128"
