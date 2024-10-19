@@ -10,7 +10,9 @@ pre-release-commit-message = "Release {{crate_name}} version {{version}}"
 crate-type = ["cdylib"]
 
 [dependencies]
+anyhow = "1.0.90"
 chrono = "0.4.38"
+derive-masked = "0.1.0"
 extism-pdk = "1.2.1"
 hank-pdk = "0.1.40"
 hank-types = { version = "0.1.50", features = ["builder"] }

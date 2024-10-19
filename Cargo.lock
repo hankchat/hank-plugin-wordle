@@ -28,9 +28,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.89"
+version = "1.0.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86fdf8605db99b54d3cd748a44c6d04df638eb5dafb219b135d0149bd0db01f6"
+checksum = "37bf3594c4c988a53154954629820791dde498571819ae4ca50ca811e060cc95"
 
 [[package]]
 name = "autocfg"
@@ -134,6 +134,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d336a2a514f6ccccaa3e09b02d41d35330c07ddf03a62165fcec10bb561c7806"
 dependencies = [
  "darling_core",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "derive-masked"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ca11c5b0a90dfc0a85824ddb2816881b396d8bec52d1cf42d2321c38a8d404a"
+dependencies = [
  "quote",
  "syn",
 ]
@@ -266,9 +276,9 @@ dependencies = [
 
 [[package]]
 name = "hank-pdk"
-version = "0.1.40"
+version = "0.1.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4545b39af951fe30da539aaa13cc18f8e112490c56430df6feb69b1af5e7eb2"
+checksum = "620ebc86d5ec03eff043da005e049449b6373f864d75f1d41c73b55db449d113"
 dependencies = [
  "extism-manifest",
  "extism-pdk",
@@ -283,7 +293,9 @@ dependencies = [
 name = "hank-plugin-wordle"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "chrono",
+ "derive-masked",
  "extism-pdk",
  "hank-pdk",
  "hank-types",
@@ -294,9 +306,9 @@ dependencies = [
 
 [[package]]
 name = "hank-types"
-version = "0.1.50"
+version = "0.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e9a6e7ae8e04ecd86e3ad45b0fc28f64333474a9315a802d0b334fa2e57a727"
+checksum = "07230e192db4fe94d0b243a8befae2b14ad0f91e2cb5ff571927d910c7193387"
 dependencies = [
  "derive_builder",
  "prost",
