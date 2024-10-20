@@ -62,7 +62,7 @@ impl TryFrom<String> for Puzzle {
         let first_line = lines.next().context("couldn't get first line of puzzle")?;
 
         let re =
-            Regex::new(r"Wordle (?<day_offset>\d+,\d+) (?<attempts>([1-6]\/6(?<hard_mode>\*)?")
+            Regex::new(r"Wordle (?<day_offset>\d+,\d+) (?<attempts>([1-6]|X))\/6(?<hard_mode>\*)?")
                 .context("couldn't construct regex")?;
         let Some(captures) = re.captures(first_line) else {
             bail!("couldn't find Wordle header pattern".to_string());
