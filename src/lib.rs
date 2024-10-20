@@ -1,18 +1,21 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
+use chrono::TimeZone;
+use chrono_tz::America::New_York;
 use derive_masked::DisplayMasked;
 use hank_pdk::{http, info, plugin_fn, warn, FnResult, Hank, HttpRequest};
-use hank_types::channel::ChannelKind;
+use hank_types::channel::{Channel, ChannelKind};
 use hank_types::database::PreparedStatement;
 use hank_types::message::Message;
 use hank_types::plugin::{CommandContext, Metadata};
 use hank_types::user::User;
+use oxford_join::OxfordJoin;
+use pluralizer::pluralize;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 use wordle::Puzzle;
 
 mod wordle;
-
-// @TODO i should probably use EST instead of UTC since NYT is EST
 
 #[plugin_fn]
 pub fn plugin() -> FnResult<()> {
@@ -36,6 +39,17 @@ pub fn plugin() -> FnResult<()> {
     hank.start()
 }
 
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct PuzzleRow {
+    id: u64,
+    submitter: String,
+    submitted_by: u64,
+    submitted_at: chrono::DateTime<chrono::Local>,
+    submitted_date: chrono::NaiveDate,
+    puzzle: Puzzle,
+}
+
 pub fn install() {
     let query = "
 CREATE TABLE IF NOT EXISTS puzzle (
@@ -48,7 +62,7 @@ CREATE TABLE IF NOT EXISTS puzzle (
     attempts INTEGER NOT NULL,
     solved INTEGER NOT NULL,
     hard_mode INTEGER NOT NULL,
-    board TEXT NOT NULL,
+    puzzle TEXT NOT NULL,
     UNIQUE(submitted_by, day_offset),
     UNIQUE(submitted_by, submitted_date)
 );
@@ -59,9 +73,9 @@ CREATE TABLE IF NOT EXISTS puzzle (
 #[derive(DisplayMasked, Deserialize)]
 #[allow(dead_code)]
 struct CurrentPuzzle {
-    id: i32,
-    days_since_launch: i32,
-    print_date: String,
+    id: u32,
+    days_since_launch: u32,
+    print_date: chrono::NaiveDate,
     #[masked]
     solution: String,
     editor: String,
@@ -73,7 +87,7 @@ fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
     fn get_current_puzzle_inner() -> CurrentPuzzle {
         let req = HttpRequest::new(format!(
             "https://www.nytimes.com/svc/wordle/v2/{}.json",
-            chrono::Utc::now().date_naive(),
+            now().date_naive(),
         ));
         let res = http::request::<String>(&req, None);
         res.unwrap().json::<CurrentPuzzle>().unwrap()
@@ -83,12 +97,65 @@ fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
         let _ = CURRENT_PUZZLE.set(get_current_puzzle_inner());
     }
 
-    CURRENT_PUZZLE.get_or_init(|| get_current_puzzle_inner())
+    CURRENT_PUZZLE.get_or_init(get_current_puzzle_inner)
+}
+
+fn announce_daily_winner() {
+    let Ok(winners) = find_todays_winners() else {
+        return;
+    };
+
+    if winners.is_empty() {
+        return;
+    }
+
+    let count = winners.len();
+    let attempts = winners
+        .first()
+        .expect("there should be a first winner")
+        .puzzle
+        .attempts;
+    let winners = winners
+        .iter()
+        .map(|w| format!("<@{}>", w.submitted_by))
+        .collect::<Vec<_>>();
+
+    let comments = HashMap::from([
+        (1, "In only **1** attempt! Crazy!"),
+        (2, "Wow, in only 2 attempts!"),
+        (3, "3 attempts? Very nice."),
+        (4, "Solved in only 4 attempts. Nice."),
+        (5, "Solved in 5 attempts, phew."),
+        (6, "6 attempts huh? Well, at least you solved it right?"),
+    ]);
+
+    let content = format!(
+        "Congratulations to {} on being the top {} yesterday! {}",
+        winners.oxford_and(),
+        pluralize("Wordler", count as isize, false),
+        comments.get(&attempts).expect("we should have a comment")
+    );
+
+    // @TODO how should the announcement channel get set? ideally it's not hardcoded.
+    // do we just need a .wordle settings accouncement_channel #general
+    // @note ideally i'd like to have a settings interface built in to hank
+    // @note i wonder if bots know who owns them/invited them to the server? then on the daily
+    // announcement, if there's no announcemnet_channel set, it can DM the owner to let them know
+    Hank::send_message(Message {
+        channel: Some(Channel {
+            kind: ChannelKind::ChatRoom.into(),
+            id: "1295918677127991298".to_string(),
+            ..Default::default()
+        }),
+        content,
+        ..Default::default()
+    });
 }
 
 pub fn initialize() {
     info!("Initializing Wordle...");
 
+    announce_daily_winner();
     // Cache the current days puzzle.
     let _ = get_current_puzzle(false);
 
@@ -96,6 +163,8 @@ pub fn initialize() {
     Hank::cron("0 0 * * *", || {
         let _ = get_current_puzzle(true);
     });
+
+    Hank::cron("0 9 * * *", announce_daily_winner);
 }
 
 pub fn wordle_chat_commands(_context: CommandContext, _message: Message) {
@@ -103,7 +172,7 @@ pub fn wordle_chat_commands(_context: CommandContext, _message: Message) {
         PreparedStatement::new("SELECT * FROM puzzle ORDER BY submitted_at DESC LIMIT ?")
             .values(["5"])
             .build();
-    let puzzles = Hank::db_fetch::<Puzzle>(statement);
+    let puzzles = Hank::db_fetch::<PuzzleRow>(statement);
 
     info!("{:?}", puzzles);
 }
@@ -174,19 +243,19 @@ enum InsertPuzzleError {
 
 fn insert_puzzle(user: &User, puzzle: &Puzzle) -> Result<(), InsertPuzzleError> {
     let query = "
-INSERT INTO puzzle (submitter, submitted_by, submitted_at, day_offset, attempts, solved, hard_mode, board)
+INSERT INTO puzzle (submitter, submitted_by, submitted_at, day_offset, attempts, solved, hard_mode, puzzle)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ";
     let statement = PreparedStatement::new(query)
         .values([
             user.name.clone(),
             user.id.to_string(),
-            chrono::Utc::now().to_rfc3339(),
+            now().to_rfc3339(),
             puzzle.day_offset.to_string(),
             puzzle.attempts.to_string(),
             puzzle.solved.to_string(),
             puzzle.hard_mode.to_string(),
-            puzzle.board.clone().into(),
+            puzzle.clone().into(),
         ])
         .build();
 
@@ -207,4 +276,43 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     } else {
         Err(InsertPuzzleError::UnknownError(error))
     }
+}
+
+fn find_puzzles() -> Result<Vec<PuzzleRow>> {
+    let statement = PreparedStatement::new("SELECT * FROM puzzle").build();
+    Ok(Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))?)
+}
+
+fn find_todays_puzzles() -> Result<Vec<PuzzleRow>> {
+    find_puzzles_by_date(&now().date_naive())
+}
+
+fn find_todays_winners() -> Result<Vec<PuzzleRow>> {
+    find_puzzles_on_date_by_rank(&now().date_naive(), 1)
+}
+
+fn find_puzzles_on_date_by_rank(date: &chrono::NaiveDate, rank: u8) -> Result<Vec<PuzzleRow>> {
+    let query = "
+SELECT * 
+FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = date(?))
+WHERE rank = CAST(? AS INTEGER)
+ORDER BY submitted_at ASC
+";
+    let statement = PreparedStatement::new(query)
+        .values([date.to_string(), rank.to_string()])
+        .build();
+
+    Ok(Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))?)
+}
+
+fn find_puzzles_by_date(date: &chrono::NaiveDate) -> Result<Vec<PuzzleRow>> {
+    let statement = PreparedStatement::new("SELECT * FROM puzzle WHERE submitted_date = date(?)")
+        .values([date.to_string()])
+        .build();
+
+    Ok(Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))?)
+}
+
+fn now() -> chrono::DateTime<chrono_tz::Tz> {
+    New_York.from_utc_datetime(&chrono::Utc::now().naive_utc())
 }

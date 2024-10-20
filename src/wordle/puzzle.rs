@@ -3,12 +3,11 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(try_from = "String")]
 pub struct Puzzle {
-    pub day_offset: i32,
-    pub attempts: i32,
-    #[serde(deserialize_with = "deserialize_bool")]
+    pub day_offset: u32,
+    pub attempts: u32,
     pub solved: bool,
-    #[serde(deserialize_with = "deserialize_bool")]
     pub hard_mode: bool,
     pub board: PuzzleBoard,
 }
@@ -53,7 +52,7 @@ impl From<Puzzle> for String {
 }
 
 impl TryFrom<String> for Puzzle {
-    type Error = ();
+    type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let mut lines = value.lines();
@@ -63,11 +62,11 @@ impl TryFrom<String> for Puzzle {
             Regex::new(r"Wordle (?<day_offset>\d+,\d+) (?<attempts>(\d|X))\/6(?<hard_mode>\*)?")
                 .unwrap();
         let Some(captures) = re.captures(first_line) else {
-            return Err(());
+            return Err("something went wrong with wordlez".to_string());
         };
 
-        let day_offset: i32 = captures["day_offset"].replace(",", "").parse().unwrap();
-        let attempts: i32 = captures["attempts"].parse().unwrap_or(6);
+        let day_offset: u32 = captures["day_offset"].replace(",", "").parse().unwrap();
+        let attempts: u32 = captures["attempts"].parse().unwrap_or(6);
         let solved = match &captures["attempts"] {
             "X" => false,
             _ => true,
@@ -86,24 +85,4 @@ impl TryFrom<String> for Puzzle {
                 .into(),
         })
     }
-}
-
-fn deserialize_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde_json::Value;
-
-    Ok(match serde::de::Deserialize::deserialize(deserializer)? {
-        Value::Bool(b) => b,
-        Value::String(s) => s == "true",
-        Value::Number(n) => n.as_u64().unwrap_or(0) == 1,
-        Value::Null => false,
-        other => {
-            return Err(serde::de::Error::unknown_variant(
-                &format!("{}", other),
-                &["0", "1", "true", "false", "'true'", "'false'"],
-            ))
-        }
-    })
 }

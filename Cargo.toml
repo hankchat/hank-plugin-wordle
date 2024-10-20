@@ -11,11 +11,14 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1.0.90"
-chrono = "0.4.38"
+chrono = { version = "0.4.38", features = ["serde"] }
+chrono-tz = { version = "0.10.0", features = ["serde"] }
 derive-masked = "0.1.0"
 extism-pdk = "1.2.1"
 hank-pdk = "0.1.40"
 hank-types = { version = "0.1.50", features = ["builder"] }
+oxford_join = "0.3.0"
+pluralizer = "0.4.0"
 regex = "1.10.6"
 serde = "1.0.210"
 serde_json = "1.0.128"
