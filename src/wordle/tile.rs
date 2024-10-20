@@ -1,6 +1,7 @@
+use anyhow::bail;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Tile {
     Black,
     Yellow,
@@ -22,7 +23,7 @@ impl From<Tile> for String {
 }
 
 impl TryFrom<String> for Tile {
-    type Error = ();
+    type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         use Tile::*;
@@ -34,9 +35,7 @@ impl TryFrom<String> for Tile {
             "⬛" => Black,
             "🟨" => Yellow,
             "🟩" => Green,
-            _ => {
-                return Err(());
-            }
+            _ => bail!("couldn't convert {} to tile", value),
         })
     }
 }

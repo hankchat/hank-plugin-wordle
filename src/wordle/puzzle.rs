@@ -1,4 +1,5 @@
 use crate::wordle::PuzzleBoard;
+use anyhow::{bail, Context as _, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -13,13 +14,15 @@ pub struct Puzzle {
 }
 
 impl Puzzle {
-    pub fn new(puzzle: String) -> Self {
-        serde_json::from_str(&puzzle).unwrap()
+    pub fn new(puzzle: impl Into<String>) -> Result<Self> {
+        Self::try_from(puzzle.into())
     }
 }
 
-impl From<Puzzle> for String {
-    fn from(puzzle: Puzzle) -> Self {
+impl TryFrom<Puzzle> for String {
+    type Error = anyhow::Error;
+
+    fn try_from(puzzle: Puzzle) -> Result<Self, Self::Error> {
         let mut string = String::from("Wordle ");
 
         let day_offset = puzzle
@@ -30,7 +33,7 @@ impl From<Puzzle> for String {
             .rev()
             .map(std::str::from_utf8)
             .collect::<Result<Vec<&str>, _>>()
-            .unwrap()
+            .context("couldn't format day_offset")?
             .join(",");
 
         string.push_str(&day_offset);
@@ -47,26 +50,31 @@ impl From<Puzzle> for String {
 
         string.push_str(&String::from(puzzle.board));
 
-        string
+        Ok(string)
     }
 }
 
 impl TryFrom<String> for Puzzle {
-    type Error = String;
+    type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let mut lines = value.lines();
-        let first_line = lines.next().unwrap_or("");
+        let first_line = lines.next().context("couldn't get first line of puzzle")?;
 
         let re =
-            Regex::new(r"Wordle (?<day_offset>\d+,\d+) (?<attempts>(\d|X))\/6(?<hard_mode>\*)?")
-                .unwrap();
+            Regex::new(r"Wordle (?<day_offset>\d+,\d+) (?<attempts>([1-6]\/6(?<hard_mode>\*)?")
+                .context("couldn't construct regex")?;
         let Some(captures) = re.captures(first_line) else {
-            return Err("something went wrong with wordlez".to_string());
+            bail!("couldn't find Wordle header pattern".to_string());
         };
 
-        let day_offset: u32 = captures["day_offset"].replace(",", "").parse().unwrap();
-        let attempts: u32 = captures["attempts"].parse().unwrap_or(6);
+        let day_offset: u32 = captures["day_offset"]
+            .replace(",", "")
+            .parse()
+            .context("couldn't convert day_offset to u32")?;
+        let attempts: u32 = captures["attempts"]
+            .parse()
+            .context("couldn't convert attempts to u32")?;
         let solved = match &captures["attempts"] {
             "X" => false,
             _ => true,
@@ -82,7 +90,8 @@ impl TryFrom<String> for Puzzle {
                 .map(|l| String::from(l))
                 .collect::<Vec<String>>()
                 .join("\n")
-                .into(),
+                .try_into()
+                .context("couldn't convert lines to puzzle board")?,
         })
     }
 }

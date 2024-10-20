@@ -50,6 +50,14 @@ struct PuzzleRow {
     puzzle: Puzzle,
 }
 
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct RankedPuzzleRow {
+    #[serde(flatten)]
+    row: PuzzleRow,
+    rank: u32,
+}
+
 pub fn install() {
     let query = "
 CREATE TABLE IF NOT EXISTS puzzle (
@@ -153,28 +161,34 @@ fn announce_daily_winner() {
 }
 
 pub fn initialize() {
-    info!("Initializing Wordle...");
+    info!("Initializing...");
 
-    announce_daily_winner();
     // Cache the current days puzzle.
     let _ = get_current_puzzle(false);
 
     // Reload the cached puzzle daily.
-    Hank::cron("0 0 * * *", || {
+    Hank::cron("0 0 0 * * *", || {
         let _ = get_current_puzzle(true);
     });
 
-    Hank::cron("0 9 * * *", announce_daily_winner);
+    Hank::cron("0 0 9 * * *", announce_daily_winner);
 }
 
-pub fn wordle_chat_commands(_context: CommandContext, _message: Message) {
-    let statement =
-        PreparedStatement::new("SELECT * FROM puzzle ORDER BY submitted_at DESC LIMIT ?")
-            .values(["5"])
-            .build();
-    let puzzles = Hank::db_fetch::<PuzzleRow>(statement);
+pub fn wordle_chat_commands(_context: CommandContext, message: Message) {
+    let leaderboard = find_puzzles_by_date_ordered_by_rank(&now().date_naive()).unwrap_or_default();
+    if leaderboard.is_empty() {
+        return;
+    }
 
-    info!("{:?}", puzzles);
+    let mut response = String::from("**Today's Top Wordlers**\n");
+    for entry in leaderboard {
+        response.push_str(&format!(
+            "{}. {} - {}/6\n",
+            entry.rank, entry.row.submitter, entry.row.puzzle.attempts
+        ));
+    }
+
+    Hank::respond(response, message)
 }
 
 pub fn handle_message(message: Message) {
@@ -226,6 +240,9 @@ pub fn handle_message(message: Message) {
                         _ => warn!("unhandled unique constraint encountered: {:?}", fields),
                     }
                 }
+                InsertPuzzleError::PuzzleConersion(e) => {
+                    warn!("there was a problem converting a puzzle on insert {}", e)
+                }
                 InsertPuzzleError::UnknownError(e) => {
                     warn!("unhandled error encountered: {}", e)
                 }
@@ -239,6 +256,7 @@ pub fn handle_message(message: Message) {
 enum InsertPuzzleError {
     UnknownError(String),
     UniqueConstraint(Vec<String>),
+    PuzzleConersion(String),
 }
 
 fn insert_puzzle(user: &User, puzzle: &Puzzle) -> Result<(), InsertPuzzleError> {
@@ -255,7 +273,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             puzzle.attempts.to_string(),
             puzzle.solved.to_string(),
             puzzle.hard_mode.to_string(),
-            puzzle.clone().into(),
+            puzzle
+                .clone()
+                .try_into()
+                .map_err(|e: anyhow::Error| InsertPuzzleError::PuzzleConersion(e.to_string()))?,
         ])
         .build();
 
@@ -288,10 +309,10 @@ fn find_todays_puzzles() -> Result<Vec<PuzzleRow>> {
 }
 
 fn find_todays_winners() -> Result<Vec<PuzzleRow>> {
-    find_puzzles_on_date_by_rank(&now().date_naive(), 1)
+    find_puzzles_by_date_and_rank(&now().date_naive(), 1)
 }
 
-fn find_puzzles_on_date_by_rank(date: &chrono::NaiveDate, rank: u8) -> Result<Vec<PuzzleRow>> {
+fn find_puzzles_by_date_and_rank(date: &chrono::NaiveDate, rank: u8) -> Result<Vec<PuzzleRow>> {
     let query = "
 SELECT * 
 FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = date(?))
@@ -303,6 +324,19 @@ ORDER BY submitted_at ASC
         .build();
 
     Ok(Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))?)
+}
+
+fn find_puzzles_by_date_ordered_by_rank(date: &chrono::NaiveDate) -> Result<Vec<RankedPuzzleRow>> {
+    let query = "
+SELECT * 
+FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = date(?))
+ORDER BY rank, submitted_at ASC
+";
+    let statement = PreparedStatement::new(query)
+        .values([date.to_string()])
+        .build();
+
+    Ok(Hank::db_fetch::<RankedPuzzleRow>(statement).map_err(|e| anyhow!(e))?)
 }
 
 fn find_puzzles_by_date(date: &chrono::NaiveDate) -> Result<Vec<PuzzleRow>> {

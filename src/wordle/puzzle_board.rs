@@ -1,8 +1,9 @@
 use crate::wordle::Tile;
+use anyhow::{bail, Context as _};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(from = "String", into = "String")]
+#[serde(try_from = "String", into = "String")]
 pub struct PuzzleBoard {
     pub board: Vec<Vec<Tile>>,
 }
@@ -13,8 +14,10 @@ impl From<Vec<Vec<Tile>>> for PuzzleBoard {
     }
 }
 
-impl From<String> for PuzzleBoard {
-    fn from(value: String) -> Self {
+impl TryFrom<String> for PuzzleBoard {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
         let mut board: Vec<Vec<Tile>> = Vec::new();
 
         let mut lines = value.lines();
@@ -27,34 +30,47 @@ impl From<String> for PuzzleBoard {
                 continue;
             }
 
-            // @TODO there's currently no constaints on how long a row is, but
-            // we should ensure there is exactly five for it to be valid.
-
             let row: Vec<Tile> = if line.contains("::") {
                 // Handle Slack messages which convert emoji to textual representation.
                 line.split("::")
                     .into_iter()
                     .map(|t| {
                         let t = t.replace(":", "");
-                        t.try_into().unwrap()
+                        t.try_into()
+                            .context("couldn't convert slack emoji name to tile")
                     })
-                    .collect()
+                    .collect::<Result<_, _>>()?
             } else {
                 // Handle Discord messages which just use raw emoji.
                 line.split("")
                     .filter(|&x| !x.is_empty())
                     .into_iter()
-                    .map(|t| t.to_string().try_into().unwrap())
-                    .collect()
+                    .map(|t| {
+                        t.to_string()
+                            .try_into()
+                            .context("couldn't convert discord emoji to tile")
+                    })
+                    .collect::<Result<_, _>>()?
             };
+
+            if row.len() > 5 {
+                bail!("invalid puzzle board, row was {} long", row.len());
+            }
 
             board.push(row);
         }
 
-        // @TODO technically the board should have _at least_ one row, and if
-        // that row is not completely green it is not valid either.
+        match board.len() {
+            0 => bail!("invalid puzzle board, now rows"),
+            1 => {
+                if !board.first().unwrap().iter().all(|t| *t == Tile::Green) {
+                    bail!("invalid puzzle board, only one row and not all green");
+                }
+            }
+            _ => (),
+        }
 
-        PuzzleBoard { board }
+        Ok(PuzzleBoard { board })
     }
 }
 
