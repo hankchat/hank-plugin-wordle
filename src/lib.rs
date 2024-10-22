@@ -105,11 +105,17 @@ fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
         let _ = CURRENT_PUZZLE.set(get_current_puzzle_inner());
     }
 
-    CURRENT_PUZZLE.get_or_init(get_current_puzzle_inner)
+    let current = CURRENT_PUZZLE.get_or_init(get_current_puzzle_inner);
+
+    if current.print_date != now().date_naive() {
+        get_current_puzzle(true)
+    } else {
+        current
+    }
 }
 
-fn announce_daily_winner() {
-    let Ok(winners) = find_todays_winners() else {
+fn announce_yesterdays_winners() {
+    let Ok(winners) = find_yesterdays_winners() else {
         return;
     };
 
@@ -171,7 +177,7 @@ pub fn initialize() {
         let _ = get_current_puzzle(true);
     });
 
-    Hank::cron("0 0 9 * * *", announce_daily_winner);
+    Hank::cron("0 0 9 * * *", announce_yesterdays_winners);
 }
 
 pub fn wordle_chat_commands(_context: CommandContext, message: Message) {
@@ -310,6 +316,11 @@ fn find_todays_puzzles() -> Result<Vec<PuzzleRow>> {
 
 fn find_todays_winners() -> Result<Vec<PuzzleRow>> {
     find_puzzles_by_date_and_rank(&now().date_naive(), 1)
+}
+
+fn find_yesterdays_winners() -> Result<Vec<PuzzleRow>> {
+    let yesterday = now() - chrono::Duration::days(1);
+    find_puzzles_by_date_and_rank(&yesterday.date_naive(), 1)
 }
 
 fn find_puzzles_by_date_and_rank(date: &chrono::NaiveDate, rank: u8) -> Result<Vec<PuzzleRow>> {
