@@ -1,6 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::TimeZone;
-use chrono_tz::America::New_York;
 use derive_masked::DisplayMasked;
 use hank_pdk::{http, info, plugin_fn, warn, FnResult, Hank, HttpRequest};
 use hank_types::channel::{Channel, ChannelKind};
@@ -95,7 +93,7 @@ fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
     fn get_current_puzzle_inner() -> CurrentPuzzle {
         let req = HttpRequest::new(format!(
             "https://www.nytimes.com/svc/wordle/v2/{}.json",
-            now().date_naive(),
+            Hank::datetime().date_naive(),
         ));
         let res = http::request::<String>(&req, None);
         res.unwrap().json::<CurrentPuzzle>().unwrap()
@@ -107,7 +105,7 @@ fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
 
     let current = CURRENT_PUZZLE.get_or_init(get_current_puzzle_inner);
 
-    if current.print_date != now().date_naive() {
+    if current.print_date != Hank::datetime().date_naive() {
         get_current_puzzle(true)
     } else {
         current
@@ -181,7 +179,8 @@ pub fn initialize() {
 }
 
 pub fn wordle_chat_commands(_context: CommandContext, message: Message) {
-    let leaderboard = find_puzzles_by_date_ordered_by_rank(&now().date_naive()).unwrap_or_default();
+    let leaderboard =
+        find_puzzles_by_date_ordered_by_rank(&Hank::datetime().date_naive()).unwrap_or_default();
     if leaderboard.is_empty() {
         return;
     }
@@ -274,7 +273,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         .values([
             user.name.clone(),
             user.id.to_string(),
-            now().to_rfc3339(),
+            Hank::datetime().to_rfc3339(),
             puzzle.day_offset.to_string(),
             puzzle.attempts.to_string(),
             puzzle.solved.to_string(),
@@ -311,15 +310,15 @@ fn find_puzzles() -> Result<Vec<PuzzleRow>> {
 }
 
 fn find_todays_puzzles() -> Result<Vec<PuzzleRow>> {
-    find_puzzles_by_date(&now().date_naive())
+    find_puzzles_by_date(&Hank::datetime().date_naive())
 }
 
 fn find_todays_winners() -> Result<Vec<PuzzleRow>> {
-    find_puzzles_by_date_and_rank(&now().date_naive(), 1)
+    find_puzzles_by_date_and_rank(&Hank::datetime().date_naive(), 1)
 }
 
 fn find_yesterdays_winners() -> Result<Vec<PuzzleRow>> {
-    let yesterday = now() - chrono::Duration::days(1);
+    let yesterday = Hank::datetime() - chrono::Duration::days(1);
     find_puzzles_by_date_and_rank(&yesterday.date_naive(), 1)
 }
 
@@ -356,8 +355,4 @@ fn find_puzzles_by_date(date: &chrono::NaiveDate) -> Result<Vec<PuzzleRow>> {
         .build();
 
     Ok(Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))?)
-}
-
-fn now() -> chrono::DateTime<chrono_tz::Tz> {
-    New_York.from_utc_datetime(&chrono::Utc::now().naive_utc())
 }

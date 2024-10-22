@@ -12,7 +12,6 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow = "1.0.90"
 chrono = { version = "0.4.38", features = ["serde"] }
-chrono-tz = { version = "0.10.0", features = ["serde"] }
 derive-masked = "0.1.0"
 extism-pdk = "1.2.1"
 hank-pdk = "0.1.40"
