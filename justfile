@@ -1,9 +1,8 @@
+chooser := "grep -v choose | ${JUST_CHOOSER:-fzf --tmux}"
 red := `tput setaf 1`
 normal := `tput sgr0`
 bold := `tput bold`
 error := bold + red + "ERROR:" + normal
-
-chooser := "grep -v choose | ${JUST_CHOOSER:-fzf --tmux}"
 
 # Display this list of available commands
 @list:
