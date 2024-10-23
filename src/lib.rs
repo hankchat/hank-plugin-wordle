@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS puzzle (
     submitter TEXT NOT NULL,
     submitted_by INTEGER NOT NULL,
     submitted_at TEXT NOT NULL,
-    submitted_date TEXT GENERATED ALWAYS AS (date(submitted_at)),
+    submitted_date TEXT NOT NULL,
     day_offset INTEGER NOT NULL,
     attempts INTEGER NOT NULL,
     solved INTEGER NOT NULL,
@@ -142,7 +142,7 @@ fn announce_yesterdays_winners() {
     ]);
 
     let content = format!(
-        "Congratulations to {} on being the top {} yesterday! {}",
+        "Congratulations to {} on being the top {} yesterday! <:limesDab:795850581725020250> {}",
         winners.oxford_and(),
         pluralize("Wordler", count as isize, false),
         comments.get(&attempts).expect("we should have a comment")
@@ -156,7 +156,7 @@ fn announce_yesterdays_winners() {
     Hank::send_message(Message {
         channel: Some(Channel {
             kind: ChannelKind::ChatRoom.into(),
-            id: "1295918677127991298".to_string(),
+            id: "664538126613741590".to_string(),
             ..Default::default()
         }),
         content,
@@ -187,9 +187,14 @@ pub fn wordle_chat_commands(_context: CommandContext, message: Message) {
 
     let mut response = String::from("**Today's Top Wordlers**\n");
     for entry in leaderboard {
+        let dab = if entry.rank == 1 {
+            "<:limesDab:795850581725020250>"
+        } else {
+            ""
+        };
         response.push_str(&format!(
-            "{}. {} - {}/6\n",
-            entry.rank, entry.row.submitter, entry.row.puzzle.attempts
+            "{}. {} - {}/6 {}\n",
+            entry.rank, entry.row.submitter, entry.row.puzzle.attempts, dab
         ));
     }
 
@@ -265,15 +270,17 @@ enum InsertPuzzleError {
 }
 
 fn insert_puzzle(user: &User, puzzle: &Puzzle) -> Result<(), InsertPuzzleError> {
+    let now = Hank::datetime();
     let query = "
-INSERT INTO puzzle (submitter, submitted_by, submitted_at, day_offset, attempts, solved, hard_mode, puzzle)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO puzzle (submitter, submitted_by, submitted_at, submitted_date, day_offset, attempts, solved, hard_mode, puzzle)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ";
     let statement = PreparedStatement::new(query)
         .values([
             user.name.clone(),
             user.id.to_string(),
-            Hank::datetime().to_rfc3339(),
+            now.to_rfc3339(),
+            now.date_naive().to_string(),
             puzzle.day_offset.to_string(),
             puzzle.attempts.to_string(),
             puzzle.solved.to_string(),
@@ -325,7 +332,7 @@ fn find_yesterdays_winners() -> Result<Vec<PuzzleRow>> {
 fn find_puzzles_by_date_and_rank(date: &chrono::NaiveDate, rank: u8) -> Result<Vec<PuzzleRow>> {
     let query = "
 SELECT * 
-FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = date(?))
+FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = ?)
 WHERE rank = CAST(? AS INTEGER)
 ORDER BY submitted_at ASC
 ";
@@ -339,7 +346,7 @@ ORDER BY submitted_at ASC
 fn find_puzzles_by_date_ordered_by_rank(date: &chrono::NaiveDate) -> Result<Vec<RankedPuzzleRow>> {
     let query = "
 SELECT * 
-FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = date(?))
+FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = ?)
 ORDER BY rank, submitted_at ASC
 ";
     let statement = PreparedStatement::new(query)
@@ -350,7 +357,7 @@ ORDER BY rank, submitted_at ASC
 }
 
 fn find_puzzles_by_date(date: &chrono::NaiveDate) -> Result<Vec<PuzzleRow>> {
-    let statement = PreparedStatement::new("SELECT * FROM puzzle WHERE submitted_date = date(?)")
+    let statement = PreparedStatement::new("SELECT * FROM puzzle WHERE submitted_date = ?")
         .values([date.to_string()])
         .build();
 
