@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
-use derive_masked::DisplayMasked;
+use chrono::TimeZone;
+use derive_masked::{DebugMasked, DisplayMasked};
 use hank_pdk::{http, info, plugin_fn, warn, FnResult, Hank, HttpRequest};
 use hank_types::channel::{Channel, ChannelKind};
 use hank_types::database::PreparedStatement;
@@ -76,7 +77,9 @@ CREATE TABLE IF NOT EXISTS puzzle (
     let _ = Hank::db_query(PreparedStatement::new(query).build());
 }
 
-#[derive(DisplayMasked, Deserialize)]
+// @TODO consider watching for messages that contain the solution and track who says the daily
+// wordle word on the day
+#[derive(DisplayMasked, DebugMasked, Deserialize, Default)]
 #[allow(dead_code)]
 struct CurrentPuzzle {
     id: u32,
@@ -87,25 +90,84 @@ struct CurrentPuzzle {
     editor: String,
 }
 
+impl CurrentPuzzle {
+    pub fn from_calculated() -> Self {
+        let today = Hank::datetime();
+        let wordle_launch_day = today
+            .offset()
+            .with_ymd_and_hms(2021, 06, 19, 0, 0, 0)
+            .unwrap();
+        let days_since_launch = Hank::datetime()
+            .signed_duration_since(wordle_launch_day)
+            .num_days()
+            .try_into()
+            .expect("number of days should not exceed u32");
+        let print_date = today.date_naive();
+        CurrentPuzzle {
+            days_since_launch,
+            print_date,
+            ..Default::default()
+        }
+    }
+}
+
 fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
     static CURRENT_PUZZLE: OnceLock<CurrentPuzzle> = OnceLock::new();
 
-    fn get_current_puzzle_inner() -> CurrentPuzzle {
+    fn get_current_puzzle_inner(retries: u8) -> Result<CurrentPuzzle> {
         let req = HttpRequest::new(format!(
             "https://www.nytimes.com/svc/wordle/v2/{}.json",
             Hank::datetime().date_naive(),
         ));
-        let res = http::request::<String>(&req, None);
-        res.unwrap().json::<CurrentPuzzle>().unwrap()
+        match http::request::<String>(&req, None)?.json::<CurrentPuzzle>() {
+            Ok(puzzle) => Ok(puzzle),
+            Err(e) => {
+                warn!(
+                    "Error getting current puzzle, retrying {} more time(s): {}",
+                    retries - 1,
+                    e
+                );
+                if retries > 1 {
+                    get_current_puzzle_inner(retries - 1)
+                } else {
+                    Err(e)
+                }
+            }
+        }
     }
 
     if reset {
-        let _ = CURRENT_PUZZLE.set(get_current_puzzle_inner());
+        match get_current_puzzle_inner(2) {
+            Ok(puzzle) => {
+                let _ = CURRENT_PUZZLE.set(puzzle);
+            }
+            Err(e) => {
+                warn!("Failed to get current puzzle after 2 retries, begrudgingly returning old puzzle: {}", e);
+
+                return if let Some(puzzle) = CURRENT_PUZZLE.get() {
+                    puzzle
+                } else {
+                    warn!("Failed to get the old puzzle! There was never one set! Just gonna fake it :shrug:");
+                    CURRENT_PUZZLE.get_or_init(|| CurrentPuzzle::from_calculated())
+                };
+            }
+        }
     }
 
-    let current = CURRENT_PUZZLE.get_or_init(get_current_puzzle_inner);
+    let current = CURRENT_PUZZLE.get_or_init(|| match get_current_puzzle_inner(2) {
+        Ok(puzzle) => puzzle,
+        Err(e) => {
+            warn!("Failed to init current puzzle after 2 retries, falling back to calculated puzzle: {}", e);
+            CurrentPuzzle::from_calculated()
+        }
+    });
 
-    if current.print_date != Hank::datetime().date_naive() {
+    let today = Hank::datetime().date_naive();
+    if current.print_date != today {
+        warn!(
+            "Cached puzzle is out of date, refreshing... {} (current date: {})",
+            current, today
+        );
         get_current_puzzle(true)
     } else {
         current
@@ -186,7 +248,7 @@ pub fn wordle_chat_commands(_context: CommandContext, message: Message) {
     }
 
     let mut response = String::from("**Today's Top Wordlers**\n");
-    for entry in leaderboard {
+    for (i, entry) in leaderboard.iter().enumerate() {
         let dab = if entry.rank == 1 {
             "<:limesDab:795850581725020250>"
         } else {
@@ -194,7 +256,7 @@ pub fn wordle_chat_commands(_context: CommandContext, message: Message) {
         };
         response.push_str(&format!(
             "{}. {} - {}/6 {}\n",
-            entry.rank, entry.row.submitter, entry.row.puzzle.attempts, dab
+            i, entry.row.submitter, entry.row.puzzle.attempts, dab
         ));
     }
 
