@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1.0.90"
+arc-swap = "1.7.1"
 chrono = { version = "0.4.38", features = ["serde"] }
 derive-masked = "0.1.0"
 extism-pdk = "1.2.1"

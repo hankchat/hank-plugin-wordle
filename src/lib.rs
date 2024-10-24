@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
-use chrono::TimeZone;
+use arc_swap::{ArcSwap, Guard};
+use chrono::{Datelike, TimeZone};
 use derive_masked::{DebugMasked, DisplayMasked};
 use hank_pdk::{http, info, plugin_fn, warn, FnResult, Hank, HttpRequest};
 use hank_types::channel::{Channel, ChannelKind};
@@ -11,7 +12,7 @@ use oxford_join::OxfordJoin;
 use pluralizer::pluralize;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use wordle::Puzzle;
 
 mod wordle;
@@ -111,10 +112,10 @@ impl CurrentPuzzle {
     }
 }
 
-fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
-    static CURRENT_PUZZLE: OnceLock<CurrentPuzzle> = OnceLock::new();
+fn get_current_puzzle(refresh: bool) -> Guard<Arc<CurrentPuzzle>> {
+    static CURRENT_PUZZLE: OnceLock<ArcSwap<CurrentPuzzle>> = OnceLock::new();
 
-    fn get_current_puzzle_inner(retries: u8) -> Result<CurrentPuzzle> {
+    fn request_puzzle(retries: u8) -> Result<CurrentPuzzle> {
         let req = HttpRequest::new(format!(
             "https://www.nytimes.com/svc/wordle/v2/{}.json",
             Hank::datetime().date_naive(),
@@ -128,7 +129,7 @@ fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
                     e
                 );
                 if retries > 1 {
-                    get_current_puzzle_inner(retries - 1)
+                    request_puzzle(retries - 1)
                 } else {
                     Err(e)
                 }
@@ -136,31 +137,38 @@ fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
         }
     }
 
-    if reset {
-        match get_current_puzzle_inner(2) {
+    fn refresh_puzzle(retries: u8) -> Guard<Arc<CurrentPuzzle>> {
+        match request_puzzle(retries) {
             Ok(puzzle) => {
-                let _ = CURRENT_PUZZLE.set(puzzle);
+                CURRENT_PUZZLE.get().unwrap().store(puzzle.into());
+                CURRENT_PUZZLE.get().unwrap().load()
             }
             Err(e) => {
-                warn!("Failed to get current puzzle after 2 retries, begrudgingly returning old puzzle: {}", e);
+                warn!("Failed to get updated puzzle after 2 retries, begrudgingly returning old puzzle: {}", e);
 
                 return if let Some(puzzle) = CURRENT_PUZZLE.get() {
-                    puzzle
+                    puzzle.load()
                 } else {
                     warn!("Failed to get the old puzzle! There was never one set! Just gonna fake it :shrug:");
-                    CURRENT_PUZZLE.get_or_init(CurrentPuzzle::from_calculated)
+                    CURRENT_PUZZLE
+                        .get_or_init(|| ArcSwap::from_pointee(CurrentPuzzle::from_calculated()))
+                        .load()
                 };
             }
         }
     }
 
-    let current = CURRENT_PUZZLE.get_or_init(|| match get_current_puzzle_inner(2) {
-        Ok(puzzle) => puzzle,
+    if refresh {
+        let _ = refresh_puzzle(2);
+    }
+
+    let current = CURRENT_PUZZLE.get_or_init(|| match request_puzzle(2) {
+        Ok(puzzle) => ArcSwap::from_pointee(puzzle),
         Err(e) => {
             warn!("Failed to init current puzzle after 2 retries, falling back to calculated puzzle: {}", e);
-            CurrentPuzzle::from_calculated()
+            ArcSwap::from_pointee(CurrentPuzzle::from_calculated())
         }
-    });
+    }).load();
 
     let today = Hank::datetime().date_naive();
     if current.print_date != today {
@@ -168,7 +176,7 @@ fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
             "Cached puzzle is out of date, refreshing... {} (current date: {})",
             current, today
         );
-        get_current_puzzle(true)
+        refresh_puzzle(2)
     } else {
         current
     }
