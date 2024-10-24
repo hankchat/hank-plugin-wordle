@@ -75,10 +75,7 @@ impl TryFrom<String> for Puzzle {
         let attempts: u32 = captures["attempts"]
             .parse()
             .context("couldn't convert attempts to u32")?;
-        let solved = match &captures["attempts"] {
-            "X" => false,
-            _ => true,
-        };
+        let solved = matches!(&captures["attempts"], "X");
         let hard_mode = captures.name("hard_mode").is_some();
 
         Ok(Puzzle {
@@ -87,7 +84,7 @@ impl TryFrom<String> for Puzzle {
             solved,
             hard_mode,
             board: lines
-                .map(|l| String::from(l))
+                .map(String::from)
                 .collect::<Vec<String>>()
                 .join("\n")
                 .try_into()

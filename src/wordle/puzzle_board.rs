@@ -20,8 +20,8 @@ impl TryFrom<String> for PuzzleBoard {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let mut board: Vec<Vec<Tile>> = Vec::new();
 
-        let mut lines = value.lines();
-        while let Some(line) = lines.next() {
+        let lines = value.lines();
+        for line in lines {
             if board.len() == 6 {
                 break;
             }
@@ -33,7 +33,6 @@ impl TryFrom<String> for PuzzleBoard {
             let row: Vec<Tile> = if line.contains("::") {
                 // Handle Slack messages which convert emoji to textual representation.
                 line.split("::")
-                    .into_iter()
                     .map(|t| {
                         let t = t.replace(":", "");
                         t.try_into()
@@ -44,7 +43,6 @@ impl TryFrom<String> for PuzzleBoard {
                 // Handle Discord messages which just use raw emoji.
                 line.split("")
                     .filter(|&x| !x.is_empty())
-                    .into_iter()
                     .map(|t| {
                         t.to_string()
                             .try_into()
@@ -81,7 +79,7 @@ impl From<PuzzleBoard> for String {
             .into_iter()
             .map(|line| {
                 line.into_iter()
-                    .map(|tile| String::from(tile))
+                    .map(String::from)
                     .collect::<Vec<String>>()
                     .join("")
             })

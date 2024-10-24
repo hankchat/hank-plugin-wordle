@@ -95,7 +95,7 @@ impl CurrentPuzzle {
         let today = Hank::datetime();
         let wordle_launch_day = today
             .offset()
-            .with_ymd_and_hms(2021, 06, 19, 0, 0, 0)
+            .with_ymd_and_hms(2021, 6, 19, 0, 0, 0)
             .unwrap();
         let days_since_launch = Hank::datetime()
             .signed_duration_since(wordle_launch_day)
@@ -148,7 +148,7 @@ fn get_current_puzzle(reset: bool) -> &'static CurrentPuzzle {
                     puzzle
                 } else {
                     warn!("Failed to get the old puzzle! There was never one set! Just gonna fake it :shrug:");
-                    CURRENT_PUZZLE.get_or_init(|| CurrentPuzzle::from_calculated())
+                    CURRENT_PUZZLE.get_or_init(CurrentPuzzle::from_calculated)
                 };
             }
         }
@@ -291,22 +291,22 @@ pub fn handle_message(message: Message) {
         return;
     }
 
-    match insert_puzzle(&user, &puzzle) {
+    match insert_puzzle(user, &puzzle) {
         Ok(_) => Hank::react("✅", message),
         Err(e) => {
             match e {
                 InsertPuzzleError::UniqueConstraint(fields) => {
-                    match fields
+                    match *fields
                         .iter()
                         .map(AsRef::as_ref)
                         .collect::<Vec<_>>()
                         .as_slice()
                     {
-                        &["submitted_by", "day_offset"] => info!(
+                        ["submitted_by", "day_offset"] => info!(
                             "{} has already submitted a puzzle for Wordle #{}",
                             user.name, puzzle.day_offset
                         ),
-                        &["submitted_by", "submitted_date"] => {
+                        ["submitted_by", "submitted_date"] => {
                             info!("{} has already submitted a puzzle for today", user.name)
                         }
                         _ => warn!("unhandled unique constraint encountered: {:?}", fields),
@@ -375,7 +375,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 
 fn find_puzzles() -> Result<Vec<PuzzleRow>> {
     let statement = PreparedStatement::new("SELECT * FROM puzzle").build();
-    Ok(Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))?)
+    Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))
 }
 
 fn find_todays_puzzles() -> Result<Vec<PuzzleRow>> {
@@ -402,7 +402,7 @@ ORDER BY submitted_at ASC
         .values([date.to_string(), rank.to_string()])
         .build();
 
-    Ok(Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))?)
+    Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))
 }
 
 fn find_puzzles_by_date_ordered_by_rank(date: &chrono::NaiveDate) -> Result<Vec<RankedPuzzleRow>> {
@@ -415,7 +415,7 @@ ORDER BY rank, submitted_at ASC
         .values([date.to_string()])
         .build();
 
-    Ok(Hank::db_fetch::<RankedPuzzleRow>(statement).map_err(|e| anyhow!(e))?)
+    Hank::db_fetch::<RankedPuzzleRow>(statement).map_err(|e| anyhow!(e))
 }
 
 fn find_puzzles_by_date(date: &chrono::NaiveDate) -> Result<Vec<PuzzleRow>> {
@@ -423,5 +423,5 @@ fn find_puzzles_by_date(date: &chrono::NaiveDate) -> Result<Vec<PuzzleRow>> {
         .values([date.to_string()])
         .build();
 
-    Ok(Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))?)
+    Hank::db_fetch::<PuzzleRow>(statement).map_err(|e| anyhow!(e))
 }
