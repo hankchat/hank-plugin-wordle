@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use arc_swap::{ArcSwap, Guard};
-use chrono::{Datelike, TimeZone};
+use chrono::TimeZone;
 use derive_masked::{DebugMasked, DisplayMasked};
 use hank_pdk::{http, info, plugin_fn, warn, FnResult, Hank, HttpRequest};
 use hank_types::channel::{Channel, ChannelKind};
@@ -27,6 +27,7 @@ pub fn plugin() -> FnResult<()> {
             "0.1.0",
         )
         .allowed_hosts(vec!["www.nytimes.com"])
+        .handles_messages(true)
         .handles_commands(true)
         .build(),
     );
