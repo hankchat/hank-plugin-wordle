@@ -72,10 +72,14 @@ impl TryFrom<String> for Puzzle {
             .replace(",", "")
             .parse()
             .context("couldn't convert day_offset to u32")?;
-        let attempts: u32 = captures["attempts"]
-            .parse()
-            .context("couldn't convert attempts to u32")?;
-        let solved = matches!(&captures["attempts"], "X");
+        let solved = !matches!(&captures["attempts"], "X");
+        let attempts: u32 = if solved {
+            captures["attempts"]
+                .parse()
+                .context("couldn't convert attempts to u32")?
+        } else {
+            6
+        };
         let hard_mode = captures.name("hard_mode").is_some();
 
         Ok(Puzzle {

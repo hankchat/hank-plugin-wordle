@@ -405,6 +405,7 @@ fn find_puzzles_by_date_and_rank(date: &chrono::NaiveDate, rank: u8) -> Result<V
 SELECT * 
 FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = ?)
 WHERE rank = CAST(? AS INTEGER)
+AND solved = 'true'
 ORDER BY submitted_at ASC
 ";
     let statement = PreparedStatement::new(query)
@@ -418,6 +419,7 @@ fn find_puzzles_by_date_ordered_by_rank(date: &chrono::NaiveDate) -> Result<Vec<
     let query = "
 SELECT * 
 FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = ?)
+WHERE solved = 'true'
 ORDER BY rank, submitted_at ASC
 ";
     let statement = PreparedStatement::new(query)
