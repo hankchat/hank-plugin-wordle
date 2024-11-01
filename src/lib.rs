@@ -204,12 +204,12 @@ fn announce_yesterdays_winners() {
         .collect::<Vec<_>>();
 
     let comments = HashMap::from([
-        (1, "In only **1** attempt! Crazy!"),
-        (2, "Wow, in only 2 attempts!"),
-        (3, "3 attempts? Very nice."),
-        (4, "Solved in only 4 attempts. Nice."),
-        (5, "Solved in 5 attempts, phew."),
-        (6, "6 attempts huh? Well, at least you solved it right?"),
+        (1, "In only **1** attempt! Genius!"),
+        (2, "Wow, in only 2 attempts! Magnificent!"),
+        (3, "3 attempts? Impressive."),
+        (4, "Solved in only 4 attempts. Splendid!"),
+        (5, "Solved in 5 attempts, great!"),
+        (6, "6 attempts, phew!"),
     ]);
 
     let content = format!(
