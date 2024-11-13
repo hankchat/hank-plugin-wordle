@@ -283,9 +283,9 @@ dependencies = [
 
 [[package]]
 name = "hank-pdk"
-version = "0.1.50"
+version = "0.1.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b001db23efe9d695529f484c37e52f7e8063e13fb12a55b0bea8d0ba4ddb92d4"
+checksum = "cca90ca308c6ebcd8fc476909fc1949b258f542973073691747d192a98abd639"
 dependencies = [
  "chrono",
  "extism-manifest",
@@ -317,9 +317,9 @@ dependencies = [
 
 [[package]]
 name = "hank-types"
-version = "0.1.53"
+version = "0.1.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8117c8fdec76d38b772339637bc294b8a396621f7959c557379198b495404d2c"
+checksum = "19918ebbe8aafa98d544f6eb971865c8a43dbc353e8f93a075d3bd557fffe0c7"
 dependencies = [
  "derive_builder",
  "prost",

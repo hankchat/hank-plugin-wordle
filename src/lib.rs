@@ -258,15 +258,24 @@ pub fn wordle_chat_commands(_context: CommandContext, message: Message) {
 
     let mut response = String::from("**Today's Top Wordlers**\n");
     for (i, entry) in leaderboard.iter().enumerate() {
+        let user = Hank::get_user(format!("{}", entry.row.submitted_by));
+        let user = user.unwrap_or(None);
+        let name = user
+            .map(|u| u.display_name)
+            .unwrap_or(entry.row.submitter.clone());
         let dab = if entry.rank == 1 {
             "<:limesDab:795850581725020250>"
         } else {
             ""
         };
-        response.push_str(&format!(
-            "{}. {} - {}/6 {}\n",
-            i, entry.row.submitter, entry.row.puzzle.attempts, dab
-        ));
+
+        let puzzle = &entry.row.puzzle;
+        let attempts = if puzzle.solved {
+            puzzle.attempts.to_string()
+        } else {
+            "X".to_string()
+        };
+        response.push_str(&format!("{}. {} - {}/6 {}\n", i, name, attempts, dab));
     }
 
     Hank::respond(response, message)
@@ -418,8 +427,7 @@ ORDER BY submitted_at ASC
 fn find_puzzles_by_date_ordered_by_rank(date: &chrono::NaiveDate) -> Result<Vec<RankedPuzzleRow>> {
     let query = "
 SELECT * 
-FROM (SELECT *, RANK() OVER (ORDER BY attempts ASC) AS rank FROM puzzle WHERE submitted_date = ?)
-WHERE solved = 'true'
+FROM (SELECT *, RANK() OVER (ORDER BY solved DESC, attempts ASC) AS rank FROM puzzle WHERE submitted_date = ?)
 ORDER BY rank, submitted_at ASC
 ";
     let statement = PreparedStatement::new(query)

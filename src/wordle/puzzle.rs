@@ -39,7 +39,12 @@ impl TryFrom<Puzzle> for String {
         string.push_str(&day_offset);
         string.push(' ');
 
-        string.push_str(&puzzle.attempts.to_string());
+        let attempts = if puzzle.solved {
+            puzzle.attempts.to_string()
+        } else {
+            "X".to_string()
+        };
+        string.push_str(&attempts);
         string.push_str("/6");
 
         if puzzle.hard_mode {
