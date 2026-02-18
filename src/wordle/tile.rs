@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Tile {
+    White,
     Black,
     Yellow,
     Green,
@@ -13,6 +14,7 @@ impl From<Tile> for String {
         use Tile::*;
 
         let tile = match value {
+            White => "⬜",
             Black => "⬛",
             Yellow => "🟨",
             Green => "🟩",
@@ -29,9 +31,11 @@ impl TryFrom<String> for Tile {
         use Tile::*;
 
         Ok(match value.as_str() {
+            "white_large_square" => White,
             "black_large_square" => Black,
             "large_yellow_square" => Yellow,
             "large_green_square" => Green,
+            "⬜" => White,
             "⬛" => Black,
             "🟨" => Yellow,
             "🟩" => Green,
